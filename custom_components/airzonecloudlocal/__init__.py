@@ -1,0 +1,1 @@
+"""Airzone Cloud Local integration"""

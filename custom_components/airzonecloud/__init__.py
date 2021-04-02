@@ -1,1 +1,0 @@
-"""Airzone Cloud integration"""
