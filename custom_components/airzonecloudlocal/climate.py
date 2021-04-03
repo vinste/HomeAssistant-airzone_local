@@ -13,13 +13,12 @@ from homeassistant.components.climate.const import (
     HVAC_MODES,
     SUPPORT_TARGET_TEMPERATURE,
 )
-from .const import CONF_USERNAME, CONF_PASSWORD
 
 # init logger
 _LOGGER = logging.getLogger(__name__)
 
 # default refresh interval
-SCAN_INTERVAL = timedelta(seconds=10)
+SCAN_INTERVAL = timedelta(seconds=60)
 
 AIRZONECLOUD_ZONE_HVAC_MODES = [
     HVAC_MODE_OFF,
@@ -30,16 +29,189 @@ AIRZONECLOUD_ZONE_HVAC_MODES = [
 ]
 
 
+
+class AirzoneCloudLocal:
+    """Allow to connect to AirzoneCloudLocal API"""
+
+    _zones = []
+
+    def __init__(self, ip):
+
+        self._ip = ip
+
+        self._load_devices()
+
+    #
+    # getters
+    #
+
+    @property
+    def devices(self):
+        """Get devices list (same order as in app)"""
+        return self._devices
+
+    @property
+    def all_systems(self):
+        """Get all systems from all devices (same order as in app)"""
+        result = []
+        for device in self.devices:
+            for system in device.systems:
+                result.append(system)
+        return result
+
+    @property
+    def all_zones(self):
+        """Get all zones from all devices (same order as in app)"""
+        result = []
+        for device in self.devices:
+            for system in device.systems:
+                for zone in system.zones:
+                    result.append(zone)
+        return result
+
+    #
+    # Refresh
+    #
+
+    def refresh_devices(self):
+        """Refresh devices"""
+        self._load_devices()
+
+
+    def _login(self):
+        """Login to AirzoneCloud and return token"""
+
+        try:
+            url = "{}{}".format(self._base_url, API_LOGIN)
+            login_payload = {"email": self._username, "password": self._password}
+            headers = {"User-Agent": self._user_agent}
+            response = self._session.post(
+                url, headers=headers, json=login_payload
+            ).json()
+            self._token = response.get("user").get("authentication_token")
+        except (RuntimeError, AttributeError):
+            raise Exception("Unable to login to AirzoneCloud") from None
+
+        _LOGGER.info("Login success as {}".format(self._username))
+
+        return self._token
+
+    def _load_devices(self):
+        """Load all devices for this account"""
+        current_devices = self._devices
+        self._devices = []
+        try:
+            for device_relation in self._get_device_relations():
+                device_data = device_relation.get("device")
+                device = None
+                # search device in current_devices (if where are refreshing devices)
+                for current_device in current_devices:
+                    if current_device.id == device_data.get("id"):
+                        device = current_device
+                        device._set_data_refreshed(device_data)
+                        break
+                # device not found => instance new device
+                if device is None:
+                    device = Device(self, device_data)
+                self._devices.append(device)
+        except RuntimeError:
+            raise Exception("Unable to load devices from AirzoneCloud")
+        return self._devices
+
+    def _get_device_relations(self):
+        """Http GET to load devices"""
+        _LOGGER.debug("get_device_relations()")
+        return self._get(API_DEVICE_RELATIONS).get("device_relations")
+
+    def _get_systems(self, device_id):
+        """Http GET to load systems"""
+        _LOGGER.debug("get_systems(device_id={})".format(device_id))
+        return self._get(API_SYSTEMS, {"device_id": device_id}).get("systems")
+
+    def _get_zones(self, system_id):
+        """Http GET to load Zones"""
+        _LOGGER.debug("get_zones(system_id={})".format(system_id))
+        return self._get(API_ZONES, {"system_id": system_id}).get("zones")
+
+    def _send_event(self, payload):
+        """Http POST to send an event"""
+        _LOGGER.debug("Send event with payload: {}".format(json.dumps(payload)))
+        try:
+            result = self._post(API_EVENTS, payload)
+            _LOGGER.debug("Result event: {}".format(json.dumps(result)))
+            return result
+        except RuntimeError:
+            _LOGGER.error("Unable to send event to AirzoneCloud")
+            return None
+
+    def _get(self, api_endpoint, params={}):
+        """Do a http GET request on an api endpoint"""
+        params["format"] = "json"
+
+        return self._request(method="GET", api_endpoint=api_endpoint, params=params)
+
+    def _post(self, api_endpoint, payload={}):
+        """Do a http POST request on an api endpoint"""
+        headers = {
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/json;charset=UTF-8",
+            "Accept": "application/json, text/plain, */*",
+        }
+
+        return self._request(
+            method="POST", api_endpoint=api_endpoint, headers=headers, json=payload
+        )
+
+    def _request(
+        self, method, api_endpoint, params={}, headers={}, json=None, autoreconnect=True
+    ):
+        # generate url with auth
+        params["user_email"] = self._username
+        params["user_token"] = self._token
+        url = "{}{}/?{}".format(
+            self._base_url, api_endpoint, urllib.parse.urlencode(params)
+        )
+
+        # set user agent
+        headers["User-Agent"] = self._user_agent
+
+        # make call
+        call = self._session.request(method=method, url=url, headers=headers, json=json)
+
+        if call.status_code == 401 and autoreconnect:  # unauthorized error
+            # log
+            _LOGGER.info(
+                "Get unauthorized error (token expired ?), trying to reconnect..."
+            )
+
+            # try to reconnect
+            self._login()
+
+            # retry get without autoreconnect (to avoid infinite loop)
+            return self._request(
+                method=method,
+                api_endpoint=api_endpoint,
+                params=params,
+                headers=headers,
+                json=json,
+                autoreconnect=False,
+            )
+
+        # raise other error if needed
+        call.raise_for_status()
+
+        return call.json()
+    
+    
+    
+
+
 def setup_platform(hass, config, add_entities, discovery_info=None):
-    """Set up the Airzonecloud platform"""
-    username = config.get(CONF_USERNAME)
-    password = config.get(CONF_PASSWORD)
-    if username is None or password is None:
-        _LOGGER.error("missing username or password config")
-        return
+    """Set up the AirzonecloudLocal platform"""
+    ip = config.get("ip")
 
     from AirzoneCloud import AirzoneCloud
-
+    
     api = None
     try:
         api = AirzoneCloud(username, password)
