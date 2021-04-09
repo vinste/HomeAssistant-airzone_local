@@ -39,44 +39,26 @@ class AirzoneCloudLocal:
 
         self._ip = ip
 
-        self._load_devices()
-
-    #
-    # getters
-    #
+        self._load_all()
 
     @property
-    def devices(self):
-        """Get devices list (same order as in app)"""
-        return self._devices
-
-    @property
-    def all_systems(self):
-        """Get all systems from all devices (same order as in app)"""
-        result = []
-        for device in self.devices:
-            for system in device.systems:
-                result.append(system)
-        return result
+    def system(self):
+        """Get system info"""
+        return self.system
 
     @property
     def all_zones(self):
         """Get all zones from all devices (same order as in app)"""
-        result = []
-        for device in self.devices:
-            for system in device.systems:
-                for zone in system.zones:
-                    result.append(zone)
-        return result
+        return self.zones
 
     #
     # Refresh
     #
-
     def refresh_devices(self):
         """Refresh devices"""
         self._load_devices()
 
+        
 
     def _login(self):
         """Login to AirzoneCloud and return token"""
@@ -96,7 +78,7 @@ class AirzoneCloudLocal:
 
         return self._token
 
-    def _load_devices(self):
+    def _load_all(self):
         """Load all devices for this account"""
         current_devices = self._devices
         self._devices = []
@@ -209,18 +191,16 @@ class AirzoneCloudLocal:
 def setup_platform(hass, config, add_entities, discovery_info=None):
     """Set up the AirzonecloudLocal platform"""
     ip = config.get("ip")
-
-    from AirzoneCloud import AirzoneCloud
     
     api = None
     try:
-        api = AirzoneCloud(username, password)
+        api = AirzoneCloudLocal(ip)
     except Exception as err:
         _LOGGER.error(err)
         hass.services.call(
             "persistent_notification",
             "create",
-            {"title": "Airzonecloud error", "message": str(err)},
+            {"title": "AirzoneCloudLocal error", "message": str(err)},
         )
         return
 
@@ -239,20 +219,22 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
 class AirzonecloudZone(ClimateEntity):
     """Representation of an Airzonecloud Zone"""
 
-    def __init__(self, azc_zone):
+    def __init__(self, data, master, id):
         """Initialize the zone"""
-        self._azc_zone = azc_zone
+        self._data = data
+        self._master = master
+        self._id = id
         _LOGGER.info("init zone {} ({})".format(self.name, self.unique_id))
 
     @property
     def unique_id(self) -> Optional[str]:
         """Return a unique ID."""
-        return "zone_" + self._azc_zone.id
+        return "zone_{}_{}".format(self..get("zoneID")
 
     @property
     def name(self):
         """Return the name of the sensor."""
-        return "{} - {}".format(self._azc_zone.system.name, self._azc_zone.name)
+        return "Zone_{}_{}".format(self._data.get("systemID"), self._data.get("zoneID")
 
     @property
     def temperature_unit(self):
