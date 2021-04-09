@@ -1,10 +1,10 @@
-# Airzone Cloud Local plugin for Home Assistant
+# Airzone Local plugin for Home Assistant
 
 ## Introduction
 
-Allow to view & control all your zones register on your Airzone Cloud Local ([airzonecloud.com](https://airzonecloud.com)) system from [Home Assistant](https://www.home-assistant.io/).
+Allow to view & control all your zones register on your Airzone Local ([airzonecloud.com](https://airzonecloud.com)) system from [Home Assistant](https://www.home-assistant.io/).
 
-This is a fork from https://github.com/max13fr/Airzonecloud-HomeAssistant, if you cannot or do not want to use the local api use max13fr integration. 
+This is a (heavily changed) fork from https://github.com/max13fr/Airzonecloud-HomeAssistant, if you cannot or do not want to use the local api use max13fr integration. 
 
 ![Screenshot](screenshot.png)
 
@@ -15,13 +15,13 @@ This is a fork from https://github.com/max13fr/Airzonecloud-HomeAssistant, if yo
 In your home assistant directory (where you have your **configuration.yaml**) :
 
 - create the directory **custom_components** if not already existing
-- copy **custom_components/airzonecloudlocal** directory from this github repository inside your **custom_components**. In case of upgrade, you can delete the **airzonecloudlocal** first then copy the new one.
+- copy **custom_components/airzone_local** directory from this github repository inside your **custom_components**. In case of upgrade, you can delete the **airzone_local** first then copy the new one.
 
 Finally, you should have the following tree :
 
 - configuration.yaml
 - custom_components/
-  - airzonecloudlocal/
+  - airzone_local/
     - \_\_init\_\_.py
     - climate.py
     - const.py
@@ -33,7 +33,7 @@ In your **configuration.yaml** add the following lines :
 
 ```
 climate:
-  - platform: airzonecloudlocal
+  - platform: airzone_local
     ip: IP of local airzone server
     scan_interval: 30
 ```
