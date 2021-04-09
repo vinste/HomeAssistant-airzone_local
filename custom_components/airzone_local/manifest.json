@@ -1,0 +1,11 @@
+{
+  "domain": "airzone_local",
+  "name": "Airzone Local",
+  "documentation": "https://github.com/jrhbcn/HomeAssistant-airzone_local",
+  "issue_tracker": "https://github.com/jrhbcn/HomeAssistant-airzone_local/issues",
+  "dependencies": [],
+  "after_dependencies": ["http"],
+  "codeowners": ["@jrhbcn"],
+  "version": "0.0.1",
+  "requirements": []
+}
