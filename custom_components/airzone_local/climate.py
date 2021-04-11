@@ -29,212 +29,137 @@ AIRZONECLOUD_ZONE_HVAC_MODES = [
 ]
 
 
+import requests
+import json
 
-class AirzoneCloudLocal:
+
+class AirzoneLocal:
     """Allow to connect to AirzoneCloudLocal API"""
 
+    _attrs = {}
     _zones = []
+    _id = 2  # Master ID (internal value but can be extracted from the one with "modes")
 
     def __init__(self, ip):
-
         self._ip = ip
-
-        self._load_all()
-
-    @property
-    def system(self):
-        """Get system info"""
-        return self.system
+        self._zones = self._load()
 
     @property
-    def all_zones(self):
-        """Get all zones from all devices (same order as in app)"""
-        return self.zones
+    def name(self):
+        return "system_{}".format(self._zones[self._id].get("systemID"))
 
-    #
-    # Refresh
-    #
-    def refresh_devices(self):
+    @property
+    def mode(self):
+        return self._zones[self._id].get("mode")
+
+    @property
+    def current_temperature(self):
+        return round(self._zones[self._id].get("roomTemp"), 1)
+
+    @property
+    def current_humidity(self):
+        return self._zones[self._id].get("humidity")
+
+    @property
+    def target_temperature(self):
+        return self._zones[self._id].get("setpoint")
+
+    @property
+    def max_temp(self):
+        return self._zones[self._id].get("maxTemp")
+
+    @property
+    def min_temp(self):
+        return self._zones[self._id].get("minTemp")
+
+    @property
+    def is_on(self):
+        return bool(int(self._data.get("state", 0)))
+
+    @property
+    def attrs(self):
+        return self._attrs
+
+    def set_mode(self, mode):
+        _LOGGER.info("set_mode ({}) NOT IMPLEMENTED".format(mode))
+        return -1
+
+    def turn_on(self, mode):
+        _LOGGER.info("turn_on NOT IMPLEMENTED")
+        return -1
+
+    def turn_off(self, mode):
+        _LOGGER.info("turn_off NOT IMPLEMENTED")
+        return -1
+
+    def set_temperature(self, temp):
+        _LOGGER.info("set_temperature ({}) NOT IMPLEMENTED".format(temp))
+        return -1
+
+    def refresh(self):
         """Refresh devices"""
-        self._load_devices()
+        self._load()
 
-        
+    def _load(self):
+        url = "http://" + self._ip + ":3000/api/v1/hvac"
+        self._zones = requests.post(
+            url,
+            headers={"Content-Type": "application/json"},
+            data='{"systemid":1,"zoneid":0}',
+        ).json()["data"]
 
-    def _login(self):
-        """Login to AirzoneCloud and return token"""
+        for i, z in enumerate(self._zones):
+            self._attrs["room_temp_{}".format(i + 1)] = round(z.get("roomTemp"), 1)
+            err = z.get("errors")
+            if len(err) == 0:
+                self._attrs["errors"] = "None"
+            else:
+                self._attrs["errors"] = str(err)
 
-        try:
-            url = "{}{}".format(self._base_url, API_LOGIN)
-            login_payload = {"email": self._username, "password": self._password}
-            headers = {"User-Agent": self._user_agent}
-            response = self._session.post(
-                url, headers=headers, json=login_payload
-            ).json()
-            self._token = response.get("user").get("authentication_token")
-        except (RuntimeError, AttributeError):
-            raise Exception("Unable to login to AirzoneCloud") from None
-
-        _LOGGER.info("Login success as {}".format(self._username))
-
-        return self._token
-
-    def _load_all(self):
-        """Load all devices for this account"""
-        current_devices = self._devices
-        self._devices = []
-        try:
-            for device_relation in self._get_device_relations():
-                device_data = device_relation.get("device")
-                device = None
-                # search device in current_devices (if where are refreshing devices)
-                for current_device in current_devices:
-                    if current_device.id == device_data.get("id"):
-                        device = current_device
-                        device._set_data_refreshed(device_data)
-                        break
-                # device not found => instance new device
-                if device is None:
-                    device = Device(self, device_data)
-                self._devices.append(device)
-        except RuntimeError:
-            raise Exception("Unable to load devices from AirzoneCloud")
-        return self._devices
-
-    def _get_device_relations(self):
-        """Http GET to load devices"""
-        _LOGGER.debug("get_device_relations()")
-        return self._get(API_DEVICE_RELATIONS).get("device_relations")
-
-    def _get_systems(self, device_id):
-        """Http GET to load systems"""
-        _LOGGER.debug("get_systems(device_id={})".format(device_id))
-        return self._get(API_SYSTEMS, {"device_id": device_id}).get("systems")
-
-    def _get_zones(self, system_id):
-        """Http GET to load Zones"""
-        _LOGGER.debug("get_zones(system_id={})".format(system_id))
-        return self._get(API_ZONES, {"system_id": system_id}).get("zones")
-
-    def _send_event(self, payload):
-        """Http POST to send an event"""
-        _LOGGER.debug("Send event with payload: {}".format(json.dumps(payload)))
-        try:
-            result = self._post(API_EVENTS, payload)
-            _LOGGER.debug("Result event: {}".format(json.dumps(result)))
-            return result
-        except RuntimeError:
-            _LOGGER.error("Unable to send event to AirzoneCloud")
-            return None
-
-    def _get(self, api_endpoint, params={}):
-        """Do a http GET request on an api endpoint"""
-        params["format"] = "json"
-
-        return self._request(method="GET", api_endpoint=api_endpoint, params=params)
-
-    def _post(self, api_endpoint, payload={}):
-        """Do a http POST request on an api endpoint"""
-        headers = {
-            "X-Requested-With": "XMLHttpRequest",
-            "Content-Type": "application/json;charset=UTF-8",
-            "Accept": "application/json, text/plain, */*",
-        }
-
-        return self._request(
-            method="POST", api_endpoint=api_endpoint, headers=headers, json=payload
-        )
-
-    def _request(
-        self, method, api_endpoint, params={}, headers={}, json=None, autoreconnect=True
-    ):
-        # generate url with auth
-        params["user_email"] = self._username
-        params["user_token"] = self._token
-        url = "{}{}/?{}".format(
-            self._base_url, api_endpoint, urllib.parse.urlencode(params)
-        )
-
-        # set user agent
-        headers["User-Agent"] = self._user_agent
-
-        # make call
-        call = self._session.request(method=method, url=url, headers=headers, json=json)
-
-        if call.status_code == 401 and autoreconnect:  # unauthorized error
-            # log
-            _LOGGER.info(
-                "Get unauthorized error (token expired ?), trying to reconnect..."
-            )
-
-            # try to reconnect
-            self._login()
-
-            # retry get without autoreconnect (to avoid infinite loop)
-            return self._request(
-                method=method,
-                api_endpoint=api_endpoint,
-                params=params,
-                headers=headers,
-                json=json,
-                autoreconnect=False,
-            )
-
-        # raise other error if needed
-        call.raise_for_status()
-
-        return call.json()
-    
-    
-    
+        return self._zones
 
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
     """Set up the AirzonecloudLocal platform"""
     ip = config.get("ip")
-    
+
     api = None
     try:
-        api = AirzoneCloudLocal(ip)
+        api = AirzoneLocal(ip)
     except Exception as err:
         _LOGGER.error(err)
         hass.services.call(
             "persistent_notification",
             "create",
-            {"title": "AirzoneCloudLocal error", "message": str(err)},
+            {"title": "AirzoneLocal error", "message": str(err)},
         )
         return
 
     entities = []
-    for device in api.devices:
-        for system in device.systems:
-            # add zones
-            for zone in system.zones:
-                entities.append(AirzonecloudZone(zone))
-            # add system to allow grouped update on all sub zones
-            entities.append(AirzonecloudSystem(system))
-
+    entities.append(AirzoneSystem(api))
     add_entities(entities)
 
 
-class AirzonecloudZone(ClimateEntity):
-    """Representation of an Airzonecloud Zone"""
+class AirzoneSystem(ClimateEntity):
+    """Representation of an Airzonecloud System"""
 
-    def __init__(self, data, master, id):
-        """Initialize the zone"""
-        self._data = data
-        self._master = master
-        self._id = id
-        _LOGGER.info("init zone {} ({})".format(self.name, self.unique_id))
+    hidden = True  # default hidden
+    _api = None
 
-    @property
-    def unique_id(self) -> Optional[str]:
-        """Return a unique ID."""
-        return "zone_{}_{}".format(self..get("zoneID")
+    def __init__(self, api):
+        """Initialize the system"""
+        self._api = api
+        _LOGGER.info("init airzone {}".format(self._api.name))
 
     @property
     def name(self):
         """Return the name of the sensor."""
-        return "Zone_{}_{}".format(self._data.get("systemID"), self._data.get("zoneID")
+        return self._api.name
+
+    @property
+    def unique_id(self) -> Optional[str]:
+        """Return a unique ID."""
+        return self._api.name
 
     @property
     def temperature_unit(self):
@@ -242,81 +167,51 @@ class AirzonecloudZone(ClimateEntity):
         return TEMP_CELSIUS
 
     @property
-    def hvac_mode(self) -> str:
-        """Return hvac operation ie. heat, cool mode."""
-        mode = self._azc_zone.mode
-
-        if self._azc_zone.is_on:
-            if mode in ["cool-air", "cool-radiant", "cool-both"]:
-                return HVAC_MODE_COOL
-
-            if mode in ["heat-air", "heat-radiant", "heat-both"]:
-                return HVAC_MODE_HEAT
-
-            if mode == "ventilate":
-                return HVAC_MODE_FAN_ONLY
-
-            if mode == "dehumidify":
-                return HVAC_MODE_DRY
-
-        return HVAC_MODE_OFF
-
-    @property
     def hvac_modes(self) -> List[str]:
         """Return the list of available hvac operation modes."""
         return AIRZONECLOUD_ZONE_HVAC_MODES
 
     @property
+    def hvac_mode(self) -> str:
+        """Return hvac operation ie. heat, cool mode."""
+        mode = self._api.mode
+
+        if mode == 2:
+            return HVAC_MODE_OFF
+
+        if mode == 2:
+            return HVAC_MODE_COOL
+
+        if mode == 3:
+            return HVAC_MODE_HEAT
+
+        if mode == 4:
+            return HVAC_MODE_FAN_ONLY
+
+        if mode == 5:
+            return HVAC_MODE_DRY
+
+        return HVAC_MODE_OFF
+
+    @property
     def current_humidity(self) -> Optional[float]:
         """Return the current humidity."""
-        return self._azc_zone.current_humidity
+        return self._api.current_humidity
 
     @property
     def current_temperature(self) -> Optional[float]:
         """Return the current temperature."""
-        return self._azc_zone.current_temperature
+        return self._api.current_temperature
 
     @property
     def target_temperature(self) -> Optional[float]:
         """Return the temperature we try to reach."""
-        return self._azc_zone.target_temperature
+        return self._api.target_temperature
 
     @property
     def target_temperature_step(self) -> Optional[float]:
         """Return the supported step of target temperature."""
         return 0.5
-
-    def set_temperature(self, **kwargs) -> None:
-        """Set new target temperature."""
-        temperature = kwargs.get(ATTR_TEMPERATURE)
-        if temperature is not None:
-            self._azc_zone.set_temperature(round(float(temperature), 1))
-
-    def set_hvac_mode(self, hvac_mode: str) -> None:
-        """Set new target hvac mode."""
-        if hvac_mode == HVAC_MODE_OFF:
-            self.turn_off()
-        else:
-            if not self._azc_zone.is_on:
-                self.turn_on()
-
-            # set hvac mode on parent system
-            if hvac_mode == HVAC_MODE_HEAT:
-                self._azc_zone.system.set_mode("heat-both")
-            elif hvac_mode == HVAC_MODE_COOL:
-                self._azc_zone.system.set_mode("cool-both")
-            elif hvac_mode == HVAC_MODE_DRY:
-                self._azc_zone.system.set_mode("dehumidify")
-            elif hvac_mode == HVAC_MODE_FAN_ONLY:
-                self._azc_zone.system.set_mode("ventilate")
-
-    def turn_on(self):
-        """Turn on."""
-        self._azc_zone.turn_on()
-
-    def turn_off(self):
-        """Turn off."""
-        self._azc_zone.turn_off()
 
     @property
     def supported_features(self):
@@ -324,86 +219,50 @@ class AirzonecloudZone(ClimateEntity):
         return SUPPORT_TARGET_TEMPERATURE
 
     @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        return self._api.attrs
+
+    @property
     def min_temp(self) -> float:
         """Return the minimum temperature."""
         return convert_temperature(
-            self._azc_zone.system.min_temp, TEMP_CELSIUS, self.temperature_unit
+            self._api.min_temp, TEMP_CELSIUS, self.temperature_unit
         )
 
     @property
     def max_temp(self) -> float:
         """Return the maximum temperature."""
         return convert_temperature(
-            self._azc_zone.system.max_temp, TEMP_CELSIUS, self.temperature_unit
+            self._api.max_temp, TEMP_CELSIUS, self.temperature_unit
         )
-
-
-class AirzonecloudSystem(ClimateEntity):
-    """Representation of an Airzonecloud System"""
-
-    hidden = True  # default hidden
-
-    def __init__(self, azc_system):
-        """Initialize the system"""
-        self._azc_system = azc_system
-        _LOGGER.info("init system {} ({})".format(self.name, self.unique_id))
-
-    @property
-    def unique_id(self) -> Optional[str]:
-        """Return a unique ID."""
-        return "system_" + self._azc_system.id
-
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return self._azc_system.name
-
-    @property
-    def temperature_unit(self):
-        """Return the unit of measurement used by the platform."""
-        return TEMP_CELSIUS
-
-    @property
-    def hvac_mode(self) -> str:
-        """Return hvac operation ie. heat, cool mode."""
-        mode = self._azc_system.mode
-
-        if mode in ["cool-air", "cool-radiant", "cool-both"]:
-            return HVAC_MODE_COOL
-
-        if mode in ["heat-air", "heat-radiant", "heat-both"]:
-            return HVAC_MODE_HEAT
-
-        if mode == "ventilate":
-            return HVAC_MODE_FAN_ONLY
-
-        if mode == "dehumidify":
-            return HVAC_MODE_DRY
-
-        return HVAC_MODE_OFF
-
-    @property
-    def hvac_modes(self) -> List[str]:
-        """Return the list of available hvac operation modes."""
-        return AIRZONECLOUD_ZONE_HVAC_MODES
 
     def set_hvac_mode(self, hvac_mode: str) -> None:
         """Set new target hvac mode."""
+        _LOGGER.info("set_hvac_mode ({})".format(hvac_mode))
         if hvac_mode == HVAC_MODE_OFF:
-            self._azc_system.set_mode("stop")
-        if hvac_mode == HVAC_MODE_HEAT:
-            self._azc_system.set_mode("heat-both")
+            self._api.set_mode(1)
         elif hvac_mode == HVAC_MODE_COOL:
-            self._azc_system.set_mode("cool-both")
-        elif hvac_mode == HVAC_MODE_DRY:
-            self._azc_system.set_mode("dehumidify")
+            self._api.set_mode(2)
+        elif hvac_mode == HVAC_MODE_HEAT:
+            self._api.set_mode(3)
         elif hvac_mode == HVAC_MODE_FAN_ONLY:
-            self._azc_system.set_mode("ventilate")
+            self._api.set_mode(4)
+        elif hvac_mode == HVAC_MODE_DRY:
+            self._api.set_mode(5)
 
-    @property
-    def supported_features(self):
-        """Return the list of supported features."""
-        return 0
+    def turn_on(self):
+        """Turn on."""
+        self._api.turn_on()
+
+    def turn_off(self):
+        """Turn off."""
+        self._api.turn_off()
+
+    def set_temperature(self, **kwargs) -> None:
+        """Set new target temperature."""
+        temperature = kwargs.get(ATTR_TEMPERATURE)
+        if temperature is not None:
+            self._api.set_temperature(round(float(temperature), 1))
 
     def update(self):
-        self._azc_system.refresh(True)
+        self._api.refresh()
