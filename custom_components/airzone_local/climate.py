@@ -31,24 +31,23 @@ AIRZONECLOUD_ZONE_HVAC_MODES = [
 import requests
 import json
 
+
 class AirzoneLocal:
     """Allow to connect to AirzoneCloudLocal API"""
 
     _attrs = {}
     _zones = []
-    _url = ""
+    _url = ":3000/api/v1/hvac"
     _masterid = 1  # Master ID (internal value but can be extracted from the one with "modes" id=2)
 
     def __init__(self, ip, masterid):
         self._ip = ip
         self._masterid = masterid - 1
         self._zones = self._load()
-        self._url = "http://" + self._ip + ":3000/api/v1/hvac"
 
     def _request_put(self, id, param, val):
-        self._url = "http://" + self._ip + ":3000/api/v1/hvac"
         self._ret = requests.put(
-            self._url,
+            "http://" + self._ip + ":3000/api/v1/hvac",
             headers={"Content-Type": "application/json"},
             data=f'{{"systemid":1,"zoneid":{id+1},"{param}":{val}}}',
         ).json()
@@ -104,9 +103,8 @@ class AirzoneLocal:
         self._load()
 
     def _load(self):
-        self._url = "http://" + self._ip + ":3000/api/v1/hvac"
         self._zones = requests.post(
-            self._url,
+            "http://" + self._ip + ":3000/api/v1/hvac",
             headers={"Content-Type": "application/json"},
             data='{"systemid":1,"zoneid":0}',
         ).json()["data"]
@@ -130,7 +128,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
 
     api = None
     try:
-        api = AirzoneLocal(ip,masterid)
+        api = AirzoneLocal(ip, masterid)
     except Exception as err:
         _LOGGER.error(err)
         hass.services.call(
@@ -142,7 +140,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
 
     entities = []
     for i in range(nzones):
-      entities.append(AirzoneSystem(api, i))
+        entities.append(AirzoneSystem(api, i))
     add_entities(entities)
 
 
