@@ -160,17 +160,17 @@ class AirzoneSystem(ClimateEntity):
     def name(self):
         """Return the name of the sensor."""
         if self._id == 0:
-            name = "Kitchen"
+            name = config.get("name_zone1")
         if self._id == 1:
-            name = "Living"
+            name = config.get("name_zone2")
         if self._id == 2:
-            name = "Emma"
+            name = config.get("name_zone3")
         if self._id == 3:
-            name = "Sandra"
+            name = config.get("name_zone4")
         if self._id == 4:
-            name = "Office"
+            name = config.get("name_zone5")
         if self._id == 5:
-            name = "Bedroom"
+            name = config.get("name_zone6")
         return name
 
     @property
