@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Allow to view & control all your zones register on your Airzone Local ([airzonecloud.com](https://airzonecloud.com)) system from [Home Assistant](https://www.home-assistant.io/).
+Allow to view & control all your zones register on your Airzone system, using the [local API](https://doc.airzone.es/producto/Gama_AZ6/Airzone/Comunes/Manuales/MI_AZ6_WSCLAPI_A4_MUL.pdf), from [Home Assistant](https://www.home-assistant.io/).
 
 This is a (heavily changed) fork from https://github.com/max13fr/Airzonecloud-HomeAssistant, if you cannot or do not want to use the local api use max13fr integration. 
 
@@ -24,7 +24,6 @@ Finally, you should have the following tree :
   - airzone_local/
     - \_\_init\_\_.py
     - climate.py
-    - const.py
     - manifest.py
 
 ### Configure
@@ -36,4 +35,7 @@ climate:
   - platform: airzone_local
     ip: IP of local airzone server
     scan_interval: 30
+    number_of_zones: 6  #number of zones configured in system
+    masterid: 1
+
 ```
