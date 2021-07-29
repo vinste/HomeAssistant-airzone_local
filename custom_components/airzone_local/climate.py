@@ -83,7 +83,14 @@ class AirzoneLocal:
         return self._attrs
 
     def set_mode(self, id, mode):
-        self._request_put(self._masterid, "mode", mode)
+#        self._request_put(self._masterid, "mode", mode) # do not modify mode here, as I only want to change on/off with HA
+        if mode == 1:
+           self._request_put(id, "on", "false")
+        else:
+           self._request_put(id, "on", "true")
+
+
+
         return 0
 
     def turn_on(self, id):
